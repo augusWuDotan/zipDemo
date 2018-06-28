@@ -29,6 +29,7 @@ public class ZipAccessManager implements LoadCallback {
     public volatile static ZipAccessManager zipAccessManager;//
     public ZipCallBack zipCallBack;//
     public ZipDownLoadManager downLoadManager;
+    public boolean isLog = true;
 
     public ZipAccessManager(String GlobalFilePath) {
         if (downLoadManager == null) downLoadManager = new ZipDownLoadManager(this, GlobalFilePath);
@@ -50,27 +51,44 @@ public class ZipAccessManager implements LoadCallback {
         this.zipCallBack = zipCallBack;
     }
 
+    public void setLog(boolean islog) {
+        this.isLog = islog;
+    }
+
     //下載結束callback
     @Override
     public void CallBackLoadData(Filebody filebody) {
         if (filebody.isLoadState()) {
             //成功下載
-            Log.d(TAG,"loadFileSuccess data: "+filebody.toString());
-            this.zipCallBack.loadFileSuccess(filebody.getLoadFilePath());
+            if(isLog)Log.d(TAG,"writeFileSuccess data: "+filebody.toString());
+            this.zipCallBack.writeFileSuccess(filebody.getLoadFilePath());
         } else {
             //下載失敗
-            Log.d(TAG,"showLoadFileError data: "+filebody.toString());
+            if(isLog)Log.d(TAG,"showLoadFileError data: "+filebody.toString());
             this.zipCallBack.showLoadFileError(filebody.getLoadMessage());
         }
     }
 
     //下載中callback
     @Override
-    public void loadStatus(float percent, long now , long total) {
+    public void loadStatus(float percent, long now , long total ,boolean isDone) {
         NumberFormat nf   =   NumberFormat.getPercentInstance();
         nf.setMinimumFractionDigits(1);//第三位
-        Log.d(TAG,"percent : "+nf.format(percent)+" ,nowSize : "+now+" ,totalSize : "+total);
-        this.zipCallBack.loadStatus(nf.format(percent),now,total);
+        if(isLog)Log.d(TAG,"[下載] "+"percent : "+nf.format(percent)+" ,nowSize : "+now+" ,totalSize : "+total);
+        if(isDone){
+            this.zipCallBack.loadStatus(nf.format(percent),now,total);
+            this.zipCallBack.writeStart();//開始寫入
+        }else{
+            this.zipCallBack.loadStatus(nf.format(percent),now,total);
+        }
+    }
+
+    @Override
+    public void writeStatus(float percent, long now, long total) {
+        NumberFormat nf   =   NumberFormat.getPercentInstance();
+        nf.setMinimumFractionDigits(1);//第三位
+        if(isLog)Log.d(TAG,"[寫入] "+"percent : "+nf.format(percent)+" ,nowSize : "+now+" ,totalSize : "+total);
+        this.zipCallBack.writeStatus(nf.format(percent),now,total);
     }
 
     /**
@@ -108,8 +126,8 @@ public class ZipAccessManager implements LoadCallback {
      * @param password            密碼「如果沒有就給空字串」
      */
     public void zip(String targetFilePath, String destinationFilePath, String password) {
+        Log.d(TAG,"toZipStart");
         try {
-
             ZipParameters parameters = new ZipParameters();
             parameters.setCompressionMethod(Zip4jConstants.COMP_DEFLATE);
             parameters.setCompressionLevel(Zip4jConstants.DEFLATE_LEVEL_NORMAL);
@@ -150,6 +168,7 @@ public class ZipAccessManager implements LoadCallback {
      * @param password
      */
     public void unzip(String targetZipFilePath, String destinationFolderPath, String password) {
+        Log.d(TAG,"toUnZipStart");
         try {
             //
             ZipFile zipFile = new ZipFile(targetZipFilePath);
@@ -175,6 +194,7 @@ public class ZipAccessManager implements LoadCallback {
      * @param destinationFolderPath
      */
     public void unrar(String targetZipFilePath, String destinationFolderPath) {
+        Log.d(TAG,"toUnRarStart");
         try {
             RarArchive rarArchive = new RarArchive();
             rarArchive.extractArchive(targetZipFilePath, destinationFolderPath);
@@ -196,6 +216,7 @@ public class ZipAccessManager implements LoadCallback {
      * @param destinationFolder
      */
     public void unrar(File targetZipFile, File destinationFolder) {
+        Log.d(TAG,"toUnRarStart");
         try {
             RarArchive rarArchive = new RarArchive();
             rarArchive.extractArchive(targetZipFile, destinationFolder);

@@ -21,7 +21,7 @@ public class MainActivity extends AppCompatActivity implements ZipCallBack{
         String GlobalPath = getFilesDir().getAbsolutePath();
         zipAccessManager = ZipAccessManager.instance(GlobalPath);
         zipAccessManager.setZipCallBack(this);
-        zipAccessManager.LoadFile("http://mosaandnasa.com/Cocos-hotfix/zip/monster05.zip","monster05",".zip");
+        zipAccessManager.LoadFile("http://mosaandnasa.com/Cocos-hotfix/zip/material.zip","material",".zip");
 
         //test toZip
         Log.d("Zip",getFilesDir().getAbsolutePath());
@@ -71,7 +71,17 @@ public class MainActivity extends AppCompatActivity implements ZipCallBack{
     }
 
     @Override
-    public void loadFileSuccess(String fileName) {
+    public void writeStart() {
+        //todo 開始寫入
+    }
+
+    @Override
+    public void writeStatus(String percent, long now, long total) {
+
+    }
+
+    @Override
+    public void writeFileSuccess(String fileName) {
         //todo 此地呼叫解壓縮
         zipAccessManager.unzip(fileName,getFilesDir().getAbsolutePath(),"");
     }

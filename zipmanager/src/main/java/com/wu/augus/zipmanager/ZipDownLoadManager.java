@@ -11,9 +11,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.math.BigDecimal;
+import java.util.concurrent.TimeUnit;
 
+import okhttp3.Interceptor;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.ResponseBody;
+import okio.Buffer;
+import okio.BufferedSource;
+import okio.ForwardingSource;
+import okio.Okio;
+import okio.Source;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -26,9 +34,14 @@ import retrofit2.converter.gson.GsonConverterFactory;
 public class ZipDownLoadManager {
     public String TAG = "ZipDownLoadManager";
     private String API_BASE_URL = "http://mosaandnasa.com/Cocos-hotfix/zip/";
+    private static final int CONNECTTIMEOUT = 5 * 5;
+    private static final int WRITETIMEOUT = 5 * 5;
+    private static final int READTIMEOUT = 10 * 5;
+
     private OkHttpClient.Builder httpClient;
     private Retrofit.Builder builder;
     private Retrofit ServiceGenerator;
+
     public LoadCallback loadCallback = null;
     private String GloblePath = "";//file 路徑
 
@@ -73,13 +86,37 @@ public class ZipDownLoadManager {
         init();
     }
 
+    final ProgressListener progressListener = new ProgressListener() {
+        @Override
+        public void update(long bytesRead, long contentLength, boolean done) {
+            float percent = new BigDecimal((float) bytesRead / (float) contentLength).setScale(3, BigDecimal.ROUND_HALF_UP).floatValue();
+            loadCallback.loadStatus(percent, bytesRead, contentLength, done);//todo 回傳下載訊息
+        }
+    };
+
+
     public void init() {
 
-        httpClient = new OkHttpClient.Builder();
+        httpClient = new OkHttpClient.Builder()
+                //超時
+                .connectTimeout(CONNECTTIMEOUT, TimeUnit.SECONDS)
+                .writeTimeout(WRITETIMEOUT, TimeUnit.SECONDS)
+                .readTimeout(READTIMEOUT, TimeUnit.SECONDS)
+                .addNetworkInterceptor(new Interceptor() {
+                    @Override
+                    public okhttp3.Response intercept(Chain chain) throws IOException {
+                        okhttp3.Response originalResponse = chain.proceed(chain.request());
+                        return originalResponse.newBuilder()
+                                .body(new ProgressResponseBody(originalResponse.body(), progressListener))
+                                .build();
+                    }
+                })
+                //錯誤重新連接
+                .retryOnConnectionFailure(true);
+
         builder = new Retrofit.Builder()
                 .baseUrl(API_BASE_URL)
-                .addConverterFactory(GsonConverterFactory.create()
-                );
+                .addConverterFactory(GsonConverterFactory.create());
         ServiceGenerator = builder.client(httpClient.build()).build();
     }
 
@@ -225,13 +262,12 @@ public class ZipDownLoadManager {
                     if (read == -1) {
                         break;
                     }
-
                     outputStream.write(fileReader, 0, read);
+                    fileSizeDownloaded += read;/**/
 
-                    fileSizeDownloaded += read;
-
-                    float percent = new BigDecimal((float) fileSizeDownloaded / (float) fileSize).setScale(3, BigDecimal.ROUND_HALF_UP).floatValue();
-                    loadCallback.loadStatus(percent,fileSizeDownloaded,fileSize);//todo 回傳下載訊息
+                    //
+                    float percent = new BigDecimal(((double) fileSizeDownloaded / (double) fileSize)).setScale(3, BigDecimal.ROUND_HALF_UP).floatValue();
+                    loadCallback.writeStatus(percent, fileSizeDownloaded, fileSize);//todo 回傳下載訊息
                 }
 
                 outputStream.flush();
@@ -262,4 +298,55 @@ public class ZipDownLoadManager {
         }
 
     }
+
+
+    private static class ProgressResponseBody extends ResponseBody {
+
+        private final ResponseBody responseBody;
+        private final ProgressListener progressListener;
+        private BufferedSource bufferedSource;
+
+        public ProgressResponseBody(ResponseBody responseBody, ProgressListener progressListener) {
+            this.responseBody = responseBody;
+            this.progressListener = progressListener;
+        }
+
+        @Override
+        public MediaType contentType() {
+            return responseBody.contentType();
+        }
+
+        @Override
+        public long contentLength() {
+            return responseBody.contentLength();
+        }
+
+        @Override
+        public BufferedSource source() {
+            if (bufferedSource == null) {
+                bufferedSource = Okio.buffer(source(responseBody.source()));
+            }
+            return bufferedSource;
+        }
+
+        private Source source(Source source) {
+            return new ForwardingSource(source) {
+                long totalBytesRead = 0L;
+
+                @Override
+                public long read(Buffer sink, long byteCount) throws IOException {
+                    long bytesRead = super.read(sink, byteCount);
+                    // read() returns the number of bytes read, or -1 if this source is exhausted.
+                    totalBytesRead += bytesRead != -1 ? bytesRead : 0;
+                    progressListener.update(totalBytesRead, responseBody.contentLength(), bytesRead == -1);
+                    return bytesRead;
+                }
+            };
+        }
+    }
+
+    interface ProgressListener {
+        void update(long bytesRead, long contentLength, boolean done);
+    }
 }
+
